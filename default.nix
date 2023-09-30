@@ -201,6 +201,28 @@ in
             };
           };
         };
+        options.kea-ctrl-agent = lib.mkOption {
+          description = "Interface kea-ctrl-agent config";
+          default = { };
+          type = lib.types.submodule {
+            options.enable = lib.mkEnableOption "Enable kea-ctrl-agent for this device";
+            options.extraArgs = lib.mkOption {
+              type = with lib.types; listOf str;
+              default = [ ];
+              description = "List of additional arguments to pass to the daemon.";
+            };
+            options.configFile = lib.mkOption {
+              type = with lib.types; nullOr path;
+              default = null;
+              description = "kea-ctrl-agent config file (takes precedence over settings)";
+            };
+            options.settings = lib.mkOption {
+              default = { };
+              type = (pkgs.formats.json { }).type;
+              description = "kea-ctrl-agent settings";
+            };
+          };
+        };
         options.ipv4 = lib.mkOption {
           description = "IPv4 config";
           default = { };

@@ -57,6 +57,10 @@ in
                 persist = true;
                 name = "/var/lib/private/kea/dhcp4-${interface}.leases";
               };
+              control-socket = {
+                socket-type = "unix";
+                socket-name = "/var/lib/private/kea/dhcp4-${interface}.socket";
+              };
               subnet4 = map
                 ({ address, prefixLength, gateways, dns, keaSettings, ... }:
                   let
@@ -138,6 +142,63 @@ in
       let
         configs = lib.flip builtins.mapAttrs cfg.interfaces (interface: icfg:
           let
+            cfg = icfg.kea-ctrl-agent;
+          in
+          if cfg.configFile != null then cfg.configFile else
+          (format.generate "kea-ctrl-agent-${interface}.conf" ({
+            Control-agent = {
+              control-sockets = {
+                dhcp4 = {
+                  socket-type = "unix";
+                  socket-name = "/var/lib/private/kea/dhcp4-${interface}.socket";
+                };
+                dhcp6 = {
+                  socket-type = "unix";
+                  socket-name = "/var/lib/private/kea/dhcp6-${interface}.socket";
+                };
+              };
+            } // cfg.settings;
+          }))
+        );
+      in
+      {
+        environment.etc = lib.mapAttrs'
+          (interface: icfg: {
+            name = "kea/ctrl-agent-${interface}.conf";
+            value = lib.mkIf (icfg.kea-ctrl-agent.enable) {
+              source = configs.${interface};
+            };
+          })
+          cfg.interfaces;
+
+        systemd.services = lib.flip lib.mapAttrs' cfg.interfaces (interface: icfg: {
+          name = "kea-ctrl-agent-${utils.escapeSystemdPath interface}";
+          value = lib.mkIf (icfg.kea-ctrl-agent.enable) (router-lib.mkServiceForIf interface {
+            description = "Kea Control Agent (${interface})";
+            documentation = [ "man:kea-ctrl-agent(8)" "https://kea.readthedocs.io/en/kea-${package.version}/arm/agent.html" ];
+            after = [ "network-online.target" "time-sync.target" ];
+            wantedBy = [
+              "multi-user.target"
+              "kea-dhcp4-server-${utils.escapeSystemdPath interface}.service"
+              "kea-dhcp6-server-${utils.escapeSystemdPath interface}.service"
+            ];
+            environment = { KEA_PIDFILE_DIR = "/run/kea"; KEA_LOCKFILE_DIR = "/run/kea"; };
+            restartTriggers = [ configs.${interface} ];
+
+            serviceConfig = {
+              ExecStart = "${package}/bin/kea-ctrl-agent -c "
+                + lib.escapeShellArgs ([ "/etc/kea/ctrl-agent-${interface}.conf" ] ++ icfg.kea-ctrl-agent.extraArgs);
+              AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+              CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
+            } // commonServiceConfig;
+          });
+        });
+      }
+    )
+    (
+      let
+        configs = lib.flip builtins.mapAttrs cfg.interfaces (interface: icfg:
+          let
             cfg6 = icfg.ipv6.kea;
           in
           if cfg6.configFile != null then cfg6.configFile else
@@ -145,6 +206,10 @@ in
             Dhcp6 = {
               valid-lifetime = 4000;
               preferred-lifetime = 3000;
+              control-socket = {
+                socket-type = "unix";
+                socket-name = "/var/lib/private/kea/dhcp6-${interface}.socket";
+              };
               interfaces-config.interfaces = [ interface ];
               lease-database = {
                 type = "memfile";
