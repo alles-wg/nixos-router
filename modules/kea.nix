@@ -182,7 +182,7 @@ in
               "kea-dhcp4-server-${utils.escapeSystemdPath interface}.service"
               "kea-dhcp6-server-${utils.escapeSystemdPath interface}.service"
             ];
-            environment = { KEA_PIDFILE_DIR = "/run/kea"; KEA_LOCKFILE_DIR = "/run/kea"; };
+            environment = { KEA_PIDFILE_DIR = "/run/keactrl-${interface}"; KEA_LOCKFILE_DIR = "/run/keactrl-${interface}"; };
             restartTriggers = [ configs.${interface} ];
 
             serviceConfig = {
@@ -190,6 +190,7 @@ in
                 + lib.escapeShellArgs ([ "/etc/kea/ctrl-agent-${interface}.conf" ] ++ icfg.kea-ctrl-agent.extraArgs);
               AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
               CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
+              RuntimeDirectory = "keactrl-${interface}";
             } // commonServiceConfig;
           });
         });
