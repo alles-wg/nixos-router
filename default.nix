@@ -152,20 +152,19 @@ in
           }));
         };
 
+        options.extraInitCommands = lib.mkOption {
+          description = "Extra commands for interface initialization to be executed before bridge/address configuration.";
+          default = "";
+          example = lib.literalExpression ''
+            '''
+              ''${pkgs.ethtool}/bin/ethtool --offload eth0 tso off
+            ''''';
+          type = lib.types.lines;
+        };
         options.networkNamespace = lib.mkOption {
           description = "Network namespace name to create this device in";
           default = null;
           type = with lib.types; nullOr str;
-        };
-        options.systemdLinkLinkConfig = lib.mkOption {
-          visible = false;
-          default = null;
-          type = with lib.types; nullOr attrs;
-        };
-        options.systemdLinkMatchConfig = lib.mkOption {
-          visible = false;
-          default = null;
-          type = with lib.types; nullOr attrs;
         };
         options.systemdLink.linkConfig = lib.mkOption {
           description = "This device's systemd.link(5) link config";
@@ -519,7 +518,6 @@ in
     # performance tweaks
     powerManagement.cpuFreqGovernor = lib.mkDefault "ondemand";
     services.irqbalance.enable = lib.mkDefault true;
-    boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_xanmod;
 
     boot.kernel.sysctl = {
       "net.netfilter.nf_log_all_netns" = true;
@@ -577,6 +575,8 @@ in
               stopIfChanged = false;
               path = [ pkgs.iproute2 ];
               script = ''
+                ${icfg.extraInitCommands}
+
                 state="/run/nixos/network/addresses/${interface}"
                 mkdir -p $(dirname "$state")
                 ${lib.optionalString (icfg.bridge != null && !icfg.hostapd.enable) ''
@@ -836,7 +836,7 @@ in
               # require rather than bind
               # because as soon as we move the interface, it's gone from the service's namespace
               # and bind would stop the service immediately
-              if isVeth then { interface = vethParent; bindType = "requires"; } else { inherit interface; preNetns = true; bindType = "requires"; }
+              { bindType = "requires"; } // (if isVeth then { interface = vethParent; } else { inherit interface; preNetns = true; })
             )
             {
               description = "Network Namespace configuration of ${interface}";
@@ -876,15 +876,10 @@ in
       name = "40-${name}";
       value = {
         matchConfig =
-          if value.systemdLinkMatchConfig != null
-          then throw "Please use systemdLink.matchConfig instead of systemdLinkMatchConfig"
-          else if value.systemdLink.matchConfig == { }
+          if value.systemdLink.matchConfig == { }
           then { OriginalName = name; }
           else value.systemdLink.matchConfig;
-        linkConfig =
-          if value.systemdLinkLinkConfig != null
-          then throw "Please use systemdLink.linkConfig instead of systemdLinkLinkConfig"
-          else value.systemdLink.linkConfig;
+        linkConfig = value.systemdLink.linkConfig;
       };
     });
     networking.useDHCP = lib.mkIf (builtins.any (x: x.dhcpcd.enable) (builtins.attrValues cfg.interfaces)) false;
